@@ -1,14 +1,13 @@
-import React from 'react';
-import VideoCall from './components/VideoCall';
-import StreamHost from './components/StreamHost';
+import React from "react";
+import StreamHost from "./components/StreamHost";
+import VideoCall from "./components/VideoCall";
 
 function App() {
     return (
         <div>
-            <h1>Live Streaming App</h1>
-            <VideoCall />
+            <h1>Live Streaming Video Call</h1>
             <StreamHost />
-            <button onClick={() => fetch('http://localhost:5000/start-stream')}>Start Live Stream</button>
+            <VideoCall />
         </div>
     );
 }
