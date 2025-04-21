@@ -1,8 +1,21 @@
+// VideoCall.jsx
 import React, { useEffect, useRef, useState } from "react";
 import { initializeApp } from "firebase/app";
-import { getFirestore, collection, doc, setDoc, getDoc, onSnapshot, addDoc, updateDoc } from "firebase/firestore";
+import {
+  getFirestore,
+  collection,
+  doc,
+  setDoc,
+  getDoc,
+  onSnapshot,
+  addDoc,
+  updateDoc,
+} from "firebase/firestore";
+import WhiteboardComponent from "./WhiteBoard";
+import StreamHost from "./StreamHost";
 
-// Firebase Config (DO NOT expose API keys publicly)
+
+// Firebase Config
 const firebaseConfig = {
   apiKey: "AIzaSyBFTOBUvLZHcNek34ZkC25GcWrbydJ2ADo",
   authDomain: "live-streaming-5bba9.firebaseapp.com",
@@ -20,7 +33,9 @@ const firestore = getFirestore(app);
 // WebRTC Configuration
 const servers = {
   iceServers: [
-    { urls: ["stun:stun1.l.google.com:19302", "stun:stun2.l.google.com:19302"] },
+    {
+      urls: ["stun:stun1.l.google.com:19302", "stun:stun2.l.google.com:19302"],
+    },
   ],
   iceCandidatePoolSize: 10,
 };
@@ -29,6 +44,8 @@ const VideoCall = () => {
   // State and Refs
   const [pc, setPc] = useState(null);
   const [callId, setCallId] = useState("");
+  const [showWhiteboard, setShowWhiteboard] = useState(false);
+  const [showCallIdPopup, setShowCallIdPopup] = useState(false);
   const localVideoRef = useRef(null);
   const remoteVideoRef = useRef(null);
   const localStreamRef = useRef(null);
@@ -54,7 +71,10 @@ const VideoCall = () => {
 
   // Start Webcam
   const startWebcam = async () => {
-    const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+    const stream = await navigator.mediaDevices.getUserMedia({
+      video: true,
+      audio: true,
+    });
     localStreamRef.current = stream;
     localVideoRef.current.srcObject = stream;
 
@@ -65,37 +85,38 @@ const VideoCall = () => {
   // Create Call (Offer)
   const createCall = async () => {
     if (!pc) return;
-  
+
     // Create a new call document
     const callDoc = doc(collection(firestore, "calls"));
     const offerCandidatesRef = collection(callDoc, "offerCandidates");
     const answerCandidatesRef = collection(callDoc, "answerCandidates");
-  
+
     setCallId(callDoc.id);
-  
+    setShowCallIdPopup(true);
+
     pc.onicecandidate = async (event) => {
       if (event.candidate) {
         await addDoc(offerCandidatesRef, event.candidate.toJSON());
       }
     };
-  
+
     const offerDescription = await pc.createOffer();
     await pc.setLocalDescription(offerDescription);
-  
+
     const offer = {
       sdp: offerDescription.sdp,
       type: offerDescription.type,
     };
-  
+
     await setDoc(callDoc, { offer });
-  
+
     onSnapshot(callDoc, (snapshot) => {
       const data = snapshot.data();
       if (data?.answer && !pc.currentRemoteDescription) {
         pc.setRemoteDescription(new RTCSessionDescription(data.answer));
       }
     });
-  
+
     onSnapshot(answerCandidatesRef, (snapshot) => {
       snapshot.docChanges().forEach((change) => {
         if (change.type === "added") {
@@ -104,41 +125,41 @@ const VideoCall = () => {
       });
     });
   };
-  
+
   // Answer Call
   const answerCall = async () => {
     if (!pc || !callId) return;
-  
+
     const callDoc = doc(firestore, "calls", callId);
     const offerCandidatesRef = collection(callDoc, "offerCandidates");
     const answerCandidatesRef = collection(callDoc, "answerCandidates");
-  
+
     pc.onicecandidate = async (event) => {
       if (event.candidate) {
         await addDoc(answerCandidatesRef, event.candidate.toJSON());
       }
     };
-  
+
     const callDocSnap = await getDoc(callDoc);
     if (!callDocSnap.exists()) {
       console.error("Call document does not exist");
       return;
     }
-  
+
     const callData = callDocSnap.data();
     const offerDescription = callData.offer;
     await pc.setRemoteDescription(new RTCSessionDescription(offerDescription));
-  
+
     const answerDescription = await pc.createAnswer();
     await pc.setLocalDescription(answerDescription);
-  
+
     const answer = {
       type: answerDescription.type,
       sdp: answerDescription.sdp,
     };
-  
+
     await updateDoc(callDoc, { answer });
-  
+
     onSnapshot(offerCandidatesRef, (snapshot) => {
       snapshot.docChanges().forEach((change) => {
         if (change.type === "added") {
@@ -149,204 +170,155 @@ const VideoCall = () => {
   };
 
   return (
-    <div
-      style={{
-        maxWidth: "1200px",
-        margin: "0 auto",
-        padding: "20px",
-        fontFamily: "Arial, sans-serif",
-      }}
-    >
-      <div
-        style={{
-          textAlign: "center",
-          marginBottom: "30px",
-        }}
-      >
-        <h1
-          style={{
-            fontSize: "28px",
-            fontWeight: "bold",
-            color: "#3a86ff",
-            marginBottom: "10px",
-          }}
-        >
+    <div className="max-w-6xl mx-auto p-4 font-sans">
+      {/* <div className="text-center mb-8">
+        <h1 className="text-2xl font-bold text-blue-600 mb-2">
           Video Call
         </h1>
-        <p style={{ color: "#666" }}>Connect with others through real-time video calls</p>
-      </div>
+        <p className="text-gray-600">Connect with others through real-time video calls</p>
+      </div> */}
 
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns: "repeat(auto-fit, minmax(450px, 1fr))",
-          gap: "20px",
-          marginBottom: "30px",
-        }}
-      >
-        {/* Local Stream */}
-        <div
-          style={{
-            border: "1px solid #e0e0e0",
-            borderRadius: "8px",
-            overflow: "hidden",
-            boxShadow: "0 2px 10px rgba(0,0,0,0.05)",
-          }}
-        >
-          <div
-            style={{
-              background: "rgba(58, 134, 255, 0.1)",
-              padding: "12px 16px",
-              display: "flex",
-              justifyContent: "space-between",
-              alignItems: "center",
-            }}
-          >
-            <h3
-              style={{
-                margin: 0,
-                fontWeight: "600",
-                fontSize: "16px",
-                color: "#333",
-              }}
-            >
-              Local Stream
-            </h3>
-            <span
-              style={{
-                background: "rgba(58, 134, 255, 0.2)",
-                color: "#3a86ff",
-                padding: "4px 10px",
-                borderRadius: "20px",
-                fontSize: "12px",
-              }}
-            >
-              You
-            </span>
-          </div>
-          <div
-            style={{
-              background: "#000",
-              aspectRatio: "16/9",
-            }}
-          >
-            <video
-              ref={localVideoRef}
-              autoPlay
-              playsInline
-              style={{ width: "100%", height: "100%", objectFit: "cover" }}
-            ></video>
-          </div>
-        </div>
+      <div className="flex flex-row items-center mb-4">
+        <h2 className="text-2xl font-bold text-blue-600 mb-1">
+          {`${JSON.parse(localStorage.getItem("streamDetails") || "{}").title || "You"}`}
+        </h2>
 
-        {/* Remote Stream */}
-        <div
-          style={{
-            border: "1px solid #e0e0e0",
-            borderRadius: "8px",
-            overflow: "hidden",
-            boxShadow: "0 2px 10px rgba(0,0,0,0.05)",
-          }}
+        <div className="flex flex-row ml-auto gap-4">
+
+        <StreamHost />
+
+        <button
+          onClick={() => setShowWhiteboard(!showWhiteboard)}
+          className="flex items-center gap-2 bg-blue-100 hover:bg-blue-200 text-blue-700 px-4 py-2 rounded-lg"
         >
-          <div
-            style={{
-              background: "rgba(58, 134, 255, 0.1)",
-              padding: "12px 16px",
-              display: "flex",
-              justifyContent: "space-between",
-              alignItems: "center",
-            }}
+          <svg
+            xmlns="http://www.w3.org/2000/svg"
+            width="20"
+            height="20"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
           >
-            <h3
-              style={{
-                margin: 0,
-                fontWeight: "600",
-                fontSize: "16px",
-                color: "#333",
-              }}
-            >
-              Remote Stream
-            </h3>
-            <span
-              style={{
-                background: "rgba(58, 134, 255, 0.2)",
-                color: "#3a86ff",
-                padding: "4px 10px",
-                borderRadius: "20px",
-                fontSize: "12px",
-              }}
-            >
-              Peer
-            </span>
-          </div>
-          <div
-            style={{
-              background: "#000",
-              aspectRatio: "16/9",
-            }}
-          >
-            <video
-              ref={remoteVideoRef}
-              autoPlay
-              playsInline
-              style={{ width: "100%", height: "100%", objectFit: "cover" }}
-            ></video>
-          </div>
+            <path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"></path>
+            <path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"></path>
+          </svg>
+          {showWhiteboard ? "Hide Whiteboard" : "Show Whiteboard"}
+        </button>
         </div>
       </div>
 
-      <div style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
+      {showWhiteboard || (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-5 mb-6">
+          {/* Local Stream */}
+          <div className="border border-gray-200 rounded-lg overflow-hidden shadow-md">
+            <div className="bg-blue-50 p-3 flex justify-between items-center">
+              <h3 className="m-0 font-semibold text-base text-gray-800">
+                Local Stream
+              </h3>
+              <span className="bg-blue-100 text-blue-600 px-3 py-1 rounded-full text-xs">
+                  {`${JSON.parse(localStorage.getItem("streamDetails") || "{}").name || "You"}`}
+              </span>
+            </div>
+            <div className="bg-black aspect-video">
+              <video
+                ref={localVideoRef}
+                autoPlay
+                playsInline
+                className="w-full h-full object-cover"
+              ></video>
+            </div>
+          </div>
+
+          {/* Remote Stream */}
+          <div className="border border-gray-200 rounded-lg overflow-hidden shadow-md">
+            <div className="bg-blue-50 p-3 flex justify-between items-center">
+              <h3 className="m-0 font-semibold text-base text-gray-800">
+                Remote Stream
+              </h3>
+              <span className="bg-blue-100 text-blue-600 px-3 py-1 rounded-full text-xs">
+                Peer
+              </span>
+            </div>
+            <div className="bg-black aspect-video">
+              <video
+                ref={remoteVideoRef}
+                autoPlay
+                playsInline
+                className="w-full h-full object-cover"
+              ></video>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* TLDraw Whiteboard (conditionally shown) */}
+      {showWhiteboard && (
+        <div className="flex w-full gap-5 mb-6">
+          {/* Whiteboard */}
+          <div className="flex-1">
+            <WhiteboardComponent roomId={callId} />
+          </div>
+
+          {/* Video Section */}
+          <div className="w-[30%] flex flex-col gap-5">
+            {/* Local Stream */}
+            <div className="border border-gray-200 rounded-lg overflow-hidden shadow-md h-[50%]">
+              <div className="bg-blue-50 p-3 flex justify-between items-center">
+                <h3 className="m-0 font-semibold text-base text-gray-800">
+                  Local Stream
+                </h3>
+                <span className="bg-blue-100 text-blue-600 px-3 py-1 rounded-full text-xs">
+                  {`${JSON.parse(localStorage.getItem("streamDetails") || "{}").name || "You"}`}
+                </span>
+              </div>
+              <div className="bg-black aspect-video">
+                <video
+                  ref={localVideoRef}
+                  autoPlay
+                  playsInline
+                  className="w-full h-full object-cover"
+                ></video>
+              </div>
+            </div>
+
+            {/* Remote Stream */}
+            <div className="border border-gray-200 rounded-lg overflow-hidden shadow-md h-[50%]">
+              <div className="bg-blue-50 p-3 flex justify-between items-center">
+                <h3 className="m-0 font-semibold text-base text-gray-800">
+                  Remote Stream
+                </h3>
+                <span className="bg-blue-100 text-blue-600 px-3 py-1 rounded-full text-xs">
+                  Peer
+                </span>
+              </div>
+              <div className="bg-black aspect-video">
+                <video
+                  ref={remoteVideoRef}
+                  autoPlay
+                  playsInline
+                  className="w-full h-full object-cover"
+                ></video>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      <div className="flex flex-raw gap-9">
         {/* Start Webcam Section */}
-        <div
-          style={{
-            border: "1px solid #e0e0e0",
-            borderRadius: "8px",
-            padding: "20px",
-            boxShadow: "0 2px 10px rgba(0,0,0,0.05)",
-          }}
-        >
-          <h2
-            style={{
-              fontSize: "18px",
-              fontWeight: "600",
-              marginBottom: "16px",
-              display: "flex",
-              alignItems: "center",
-              gap: "10px",
-            }}
-          >
-            <span
-              style={{
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                width: "24px",
-                height: "24px",
-                borderRadius: "50%",
-                background: "#3a86ff",
-                color: "white",
-                fontSize: "14px",
-              }}
-            >
+        <div className="border border-gray-200 rounded-lg p-5 shadow-md w-[25%]">
+          <h2 className="text-lg font-semibold mb-4 flex items-center gap-2">
+            <span className="flex items-center justify-center w-6 h-6 rounded-full bg-blue-600 text-white text-sm">
               1
             </span>
             Start your Webcam
           </h2>
           <button
             onClick={startWebcam}
-            style={{
-              background: "#3a86ff",
-              color: "white",
-              border: "none",
-              padding: "10px 20px",
-              borderRadius: "6px",
-              fontSize: "16px",
-              cursor: "pointer",
-              fontWeight: "500",
-              display: "flex",
-              alignItems: "center",
-              gap: "8px",
-            }}
+            className="bg-blue-600 text-white border-none py-2 px-4 rounded-md text-base cursor-pointer font-medium flex items-center gap-2"
           >
             <svg
               xmlns="http://www.w3.org/2000/svg"
@@ -367,56 +339,18 @@ const VideoCall = () => {
         </div>
 
         {/* Create Call Section */}
-        <div
-          style={{
-            border: "1px solid #e0e0e0",
-            borderRadius: "8px",
-            padding: "20px",
-            boxShadow: "0 2px 10px rgba(0,0,0,0.05)",
-          }}
-        >
-          <h2
-            style={{
-              fontSize: "18px",
-              fontWeight: "600",
-              marginBottom: "16px",
-              display: "flex",
-              alignItems: "center",
-              gap: "10px",
-            }}
-          >
-            <span
-              style={{
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                width: "24px",
-                height: "24px",
-                borderRadius: "50%",
-                background: "#3a86ff",
-                color: "white",
-                fontSize: "14px",
-              }}
-            >
+        <div className="border border-gray-200 rounded-lg p-5 shadow-md w-[32%]">
+          <h2 className="text-lg font-semibold mb-4 flex items-center gap-2">
+            <span className="flex items-center justify-center w-6 h-6 rounded-full bg-blue-600 text-white text-sm">
               2
             </span>
             Create a new Call
           </h2>
+
+          <div className="flex flex-row gap-2 flex-wrap">
           <button
             onClick={createCall}
-            style={{
-              background: "white",
-              color: "#3a86ff",
-              border: "1px solid #3a86ff",
-              padding: "10px 20px",
-              borderRadius: "6px",
-              fontSize: "16px",
-              cursor: "pointer",
-              fontWeight: "500",
-              display: "flex",
-              alignItems: "center",
-              gap: "8px",
-            }}
+            className="bg-white text-blue-600 border border-blue-600 py-2 px-4 rounded-md text-base cursor-pointer font-medium flex items-center gap-2"
           >
             <svg
               xmlns="http://www.w3.org/2000/svg"
@@ -435,121 +369,72 @@ const VideoCall = () => {
           </button>
 
           {callId && (
-            <div
-              style={{
-                marginTop: "16px",
-                padding: "12px",
-                background: "#f5f5f5",
-                borderRadius: "6px",
-              }}
+          <button
+            onClick={() => setShowCallIdPopup(true)}
+            className="bg-blue-600 text-white px-3 py-2 rounded-md hover:bg-blue-700 transition flex items-center gap-1"
+            title="View Call ID"
+          >
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              className="h-4 w-4"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+              strokeWidth="2"
             >
-              <p
-                style={{
-                  fontSize: "14px",
-                  fontWeight: "500",
-                  marginBottom: "4px",
-                }}
-              >
-                Share this call ID with others:
-              </p>
-              <code
-                style={{
-                  display: "block",
-                  padding: "8px",
-                  background: "white",
-                  border: "1px solid #e0e0e0",
-                  borderRadius: "4px",
-                  overflowX: "auto",
-                  fontSize: "14px",
-                }}
-              >
-                {callId}
-              </code>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M15 12H9m12 0a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+            ID
+          </button>
+          )}
+          </div>
+
+          {showCallIdPopup && (
+            <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+              <div className="bg-white p-6 rounded-lg shadow-lg w-[90%] max-w-md">
+                <h3 className="text-lg font-semibold mb-4 text-center">Your Call ID</h3>
+                <div className="flex items-center justify-between bg-gray-100 border rounded px-3 py-2 mb-4">
+                  <span className="text-sm break-all">{callId}</span>
+                  <button
+                    onClick={() => {
+                      navigator.clipboard.writeText(callId);
+                      alert("Call ID copied to clipboard!");
+                    }}
+                    className="ml-4 text-blue-600 font-medium hover:underline"
+                  >
+                    Copy
+                  </button>
+                </div>
+                <button
+                  onClick={() => setShowCallIdPopup(false)}
+                  className="block mx-auto bg-blue-600 text-white py-1 px-4 rounded"
+                >
+                  Close
+                </button>
+              </div>
             </div>
           )}
         </div>
 
         {/* Join Call Section */}
-        <div
-          style={{
-            border: "1px solid #e0e0e0",
-            borderRadius: "8px",
-            padding: "20px",
-            boxShadow: "0 2px 10px rgba(0,0,0,0.05)",
-          }}
-        >
-          <h2
-            style={{
-              fontSize: "18px",
-              fontWeight: "600",
-              marginBottom: "16px",
-              display: "flex",
-              alignItems: "center",
-              gap: "10px",
-            }}
-          >
-            <span
-              style={{
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                width: "24px",
-                height: "24px",
-                borderRadius: "50%",
-                background: "#3a86ff",
-                color: "white",
-                fontSize: "14px",
-              }}
-            >
+        <div className="border border-gray-200 rounded-lg p-5 shadow-md w-[43%]">
+          <h2 className="text-lg font-semibold mb-4 flex items-center gap-2">
+            <span className="flex items-center justify-center w-6 h-6 rounded-full bg-blue-600 text-white text-sm">
               3
             </span>
             Join a Call
           </h2>
-          <p
-            style={{
-              color: "#666",
-              marginBottom: "16px",
-            }}
-          >
-            Answer the call from a different browser window or device
-          </p>
 
-          <div
-            style={{
-              display: "flex",
-              flexDirection: "row",
-              gap: "10px",
-              flexWrap: "wrap",
-            }}
-          >
+          <div className="flex flex-row gap-2 flex-wrap">
             <input
               value={callId}
               onChange={(e) => setCallId(e.target.value)}
               placeholder="Enter call ID"
-              style={{
-                flex: "1",
-                minWidth: "200px",
-                padding: "10px 12px",
-                borderRadius: "6px",
-                border: "1px solid #ddd",
-                fontSize: "16px",
-              }}
+              className="flex-1 min-w-[200px] py-2 px-3 rounded-md border border-gray-300 text-base"
             />
             <button
               onClick={answerCall}
-              style={{
-                background: "#f0f4ff",
-                color: "#3a86ff",
-                border: "none",
-                padding: "10px 20px",
-                borderRadius: "6px",
-                fontSize: "16px",
-                cursor: "pointer",
-                fontWeight: "500",
-                display: "flex",
-                alignItems: "center",
-                gap: "8px",
-              }}
+              className="bg-blue-50 text-blue-600 border-none py-2 px-4 rounded-md text-base cursor-pointer font-medium flex items-center gap-2"
             >
               <svg
                 xmlns="http://www.w3.org/2000/svg"
