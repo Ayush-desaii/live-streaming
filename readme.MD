@@ -1,4 +1,3 @@
-```markdown
 # 🎙️ Podcast Live Streaming Web App
 
 This project allows users to host and stream their podcasts **live to YouTube** with webcam support and peer-to-peer video calls using WebRTC and Socket.IO. Built for creators who want to go live with a guest seamlessly.
