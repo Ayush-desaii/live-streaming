@@ -46,6 +46,7 @@ const VideoCall = () => {
   const [callId, setCallId] = useState("");
   const [showWhiteboard, setShowWhiteboard] = useState(false);
   const [showCallIdPopup, setShowCallIdPopup] = useState(false);
+  const [peer, setPeer] = useState("peer")
   const localVideoRef = useRef(null);
   const remoteVideoRef = useRef(null);
   const localStreamRef = useRef(null);
@@ -82,93 +83,123 @@ const VideoCall = () => {
     stream.getTracks().forEach((track) => pc?.addTrack(track, stream));
   };
 
-  // Create Call (Offer)
-  const createCall = async () => {
-    if (!pc) return;
+ // Create Call (Offer)
+const createCall = async () => {
+  if (!pc) return;
 
-    // Create a new call document
-    const callDoc = doc(collection(firestore, "calls"));
-    const offerCandidatesRef = collection(callDoc, "offerCandidates");
-    const answerCandidatesRef = collection(callDoc, "answerCandidates");
+  // Get username from localStorage
+  const streamDetails = JSON.parse(localStorage.getItem('streamDetails') || '{}');
+  const username = streamDetails.name || 'Anonymous';
 
-    setCallId(callDoc.id);
-    setShowCallIdPopup(true);
+  // Create a new call document
+  const callDoc = doc(collection(firestore, "calls"));
+  const offerCandidatesRef = collection(callDoc, "offerCandidates");
+  const answerCandidatesRef = collection(callDoc, "answerCandidates");
 
-    pc.onicecandidate = async (event) => {
-      if (event.candidate) {
-        await addDoc(offerCandidatesRef, event.candidate.toJSON());
-      }
-    };
+  setCallId(callDoc.id);
+  setShowCallIdPopup(true);
 
-    const offerDescription = await pc.createOffer();
-    await pc.setLocalDescription(offerDescription);
-
-    const offer = {
-      sdp: offerDescription.sdp,
-      type: offerDescription.type,
-    };
-
-    await setDoc(callDoc, { offer });
-
-    onSnapshot(callDoc, (snapshot) => {
-      const data = snapshot.data();
-      if (data?.answer && !pc.currentRemoteDescription) {
-        pc.setRemoteDescription(new RTCSessionDescription(data.answer));
-      }
-    });
-
-    onSnapshot(answerCandidatesRef, (snapshot) => {
-      snapshot.docChanges().forEach((change) => {
-        if (change.type === "added") {
-          pc.addIceCandidate(new RTCIceCandidate(change.doc.data()));
-        }
-      });
-    });
-  };
-
-  // Answer Call
-  const answerCall = async () => {
-    if (!pc || !callId) return;
-
-    const callDoc = doc(firestore, "calls", callId);
-    const offerCandidatesRef = collection(callDoc, "offerCandidates");
-    const answerCandidatesRef = collection(callDoc, "answerCandidates");
-
-    pc.onicecandidate = async (event) => {
-      if (event.candidate) {
-        await addDoc(answerCandidatesRef, event.candidate.toJSON());
-      }
-    };
-
-    const callDocSnap = await getDoc(callDoc);
-    if (!callDocSnap.exists()) {
-      console.error("Call document does not exist");
-      return;
+  pc.onicecandidate = async (event) => {
+    if (event.candidate) {
+      await addDoc(offerCandidatesRef, event.candidate.toJSON());
     }
-
-    const callData = callDocSnap.data();
-    const offerDescription = callData.offer;
-    await pc.setRemoteDescription(new RTCSessionDescription(offerDescription));
-
-    const answerDescription = await pc.createAnswer();
-    await pc.setLocalDescription(answerDescription);
-
-    const answer = {
-      type: answerDescription.type,
-      sdp: answerDescription.sdp,
-    };
-
-    await updateDoc(callDoc, { answer });
-
-    onSnapshot(offerCandidatesRef, (snapshot) => {
-      snapshot.docChanges().forEach((change) => {
-        if (change.type === "added") {
-          pc.addIceCandidate(new RTCIceCandidate(change.doc.data()));
-        }
-      });
-    });
   };
 
+  const offerDescription = await pc.createOffer();
+  await pc.setLocalDescription(offerDescription);
+
+  const offer = {
+    sdp: offerDescription.sdp,
+    type: offerDescription.type,
+  };
+
+  // Add creator's username to the call document
+  await setDoc(callDoc, { 
+    offer,
+    creatorName: username
+  });
+
+  onSnapshot(callDoc, (snapshot) => {
+    const data = snapshot.data();
+    if (data?.answer && !pc.currentRemoteDescription) {
+      pc.setRemoteDescription(new RTCSessionDescription(data.answer));
+      
+      // You can access the answerer's name here
+      if (data.answererName) {
+        console.log(`Call answered by: ${data.answererName}`);
+        setPeer(data.answererName)
+        // Update UI or state with the answerer's name
+      }
+    }
+  });
+
+  onSnapshot(answerCandidatesRef, (snapshot) => {
+    snapshot.docChanges().forEach((change) => {
+      if (change.type === "added") {
+        pc.addIceCandidate(new RTCIceCandidate(change.doc.data()));
+      }
+    });
+  });
+};
+
+// Answer Call
+const answerCall = async () => {
+  if (!pc || !callId) return;
+
+  // Get username from localStorage
+  const streamDetails = JSON.parse(localStorage.getItem('streamDetails') || '{}');
+  const username = streamDetails.name || 'Anonymous';
+
+  const callDoc = doc(firestore, "calls", callId);
+  const offerCandidatesRef = collection(callDoc, "offerCandidates");
+  const answerCandidatesRef = collection(callDoc, "answerCandidates");
+
+  pc.onicecandidate = async (event) => {
+    if (event.candidate) {
+      await addDoc(answerCandidatesRef, event.candidate.toJSON());
+    }
+  };
+
+  const callDocSnap = await getDoc(callDoc);
+  if (!callDocSnap.exists()) {
+    console.error("Call document does not exist");
+    return;
+  }
+
+  const callData = callDocSnap.data();
+  const offerDescription = callData.offer;
+  
+  // You can access the creator's name here
+  if (callData.creatorName) {
+    console.log(`Joining call created by: ${callData.creatorName}`);
+    setPeer(callData.creatorName)
+    // Update UI or state with the creator's name
+  }
+  
+  await pc.setRemoteDescription(new RTCSessionDescription(offerDescription));
+
+  const answerDescription = await pc.createAnswer();
+  await pc.setLocalDescription(answerDescription);
+
+  const answer = {
+    type: answerDescription.type,
+    sdp: answerDescription.sdp,
+  };
+
+  // Update the call doc with answer and answerer's name
+  await updateDoc(callDoc, { 
+    answer,
+    answererName: username
+  });
+
+  onSnapshot(offerCandidatesRef, (snapshot) => {
+    snapshot.docChanges().forEach((change) => {
+      if (change.type === "added") {
+        pc.addIceCandidate(new RTCIceCandidate(change.doc.data()));
+      }
+    });
+  });
+};
   return (
     <div className="max-w-6xl mx-auto p-4 font-sans">
       {/* <div className="text-center mb-8">
@@ -239,7 +270,7 @@ const VideoCall = () => {
                 Remote Stream
               </h3>
               <span className="bg-blue-100 text-blue-600 px-3 py-1 rounded-full text-xs">
-                Peer
+                {peer}
               </span>
             </div>
             <div className="bg-black aspect-video">
@@ -291,7 +322,7 @@ const VideoCall = () => {
                   Remote Stream
                 </h3>
                 <span className="bg-blue-100 text-blue-600 px-3 py-1 rounded-full text-xs">
-                  Peer
+                  {peer}
                 </span>
               </div>
               <div className="bg-black aspect-video">
