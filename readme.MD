@@ -38,7 +38,7 @@ git clone https://github.com/Ayush-desaii/live-streaming
 
 ```bash
 # For backend
-cd server
+cd backend
 npm install
 
 # For frontend
